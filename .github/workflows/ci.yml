@@ -88,9 +88,9 @@ jobs:
         export MLFLOW_TRACKING_URI=file:./mlruns
         echo "MLFLOW_TRACKING_URI=file:./mlruns" >> $GITHUB_ENV
         
-    - name: Run MLflow Project (Python Virtual Environment)
+    - name: Run MLflow Project (Local Environment)
       run: |
-        echo "🚀 Starting MLflow Project execution with virtualenv environment..."
+        echo "🚀 Starting MLflow Project execution with local environment..."
         cd MLProject
         
         # Set experiment name based on trigger
@@ -107,10 +107,10 @@ jobs:
         
         echo "📊 Training with experiment: $EXPERIMENT_NAME"
         
-        # Run the MLflow project with virtualenv environment
+        # Run the MLflow project with local environment (no virtualenv/conda)
         mlflow run . \
           --experiment-name "$EXPERIMENT_NAME" \
-          --env-manager virtualenv \
+          --env-manager local \
           -P experiment_name="$EXPERIMENT_NAME" \
           -P data_path="stroke_data_preprocessing" \
           $VERBOSE_FLAG
