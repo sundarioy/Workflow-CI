@@ -1,6 +1,7 @@
 name: stroke_prediction_mlflow_project
 
-conda_env: conda.yaml
+# Use system environment instead of conda for better compatibility
+python_env: python
 
 entry_points:
   main:
