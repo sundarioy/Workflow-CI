@@ -380,6 +380,8 @@ def main():
     """Main function for MLflow Project execution"""
     print("🎯 Starting MLflow Project: Stroke Prediction Training")
     print("="*60)
+    print(f"🐍 Python version: {sys.version}")
+    print(f"📦 Working directory: {os.getcwd()}")
     
     # Parse command line arguments
     args = parse_arguments()
