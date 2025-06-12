@@ -1,7 +1,6 @@
 name: stroke_prediction_mlflow_project
 
-# Use system environment instead of conda for better compatibility
-python_env: python
+python_env: python_env.yaml
 
 entry_points:
   main:
@@ -20,7 +19,6 @@ entry_points:
         description: "Enable verbose logging"
     command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path} {verbose}"
   
-  # Additional entry point for testing
   test:
     parameters:
       data_path:
