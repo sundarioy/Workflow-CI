@@ -20,7 +20,7 @@ on:
 
 # Environment variables
 env:
-  PYTHON_VERSION: '3.9'
+  PYTHON_VERSION: '3.11'
   MLFLOW_TRACKING_URI: 'file:./mlruns'
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
         ls -la MLProject/
         echo "📋 Checking required files:"
         test -f MLProject/MLProject && echo "✅ MLProject file exists" || exit 1
-        test -f MLProject/conda.yaml && echo "✅ conda.yaml exists" || exit 1
+        test -f MLProject/python_env.yaml && echo "✅ python_env.yaml exists" || exit 1
         test -f MLProject/modelling.py && echo "✅ modelling.py exists" || exit 1
         test -d MLProject/stroke_data_preprocessing && echo "✅ Data directory exists" || exit 1
         echo "🎯 MLProject structure validation passed!"
@@ -74,17 +74,12 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential
         
-    - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        auto-update-conda: true
-        python-version: ${{ env.PYTHON_VERSION }}
-        channels: conda-forge,defaults
-        
     - name: Install MLflow and dependencies
       run: |
+        cd MLProject
         python -m pip install --upgrade pip
         pip install mlflow>=2.0.0
+        pip install -r requirements.txt
         
     - name: Setup MLflow tracking
       run: |
@@ -93,9 +88,9 @@ jobs:
         export MLFLOW_TRACKING_URI=file:./mlruns
         echo "MLFLOW_TRACKING_URI=file:./mlruns" >> $GITHUB_ENV
         
-    - name: Run MLflow Project
+    - name: Run MLflow Project (Python Virtual Environment)
       run: |
-        echo "🚀 Starting MLflow Project execution..."
+        echo "🚀 Starting MLflow Project execution with virtualenv environment..."
         cd MLProject
         
         # Set experiment name based on trigger
@@ -112,10 +107,10 @@ jobs:
         
         echo "📊 Training with experiment: $EXPERIMENT_NAME"
         
-        # Run the MLflow project
+        # Run the MLflow project with virtualenv environment
         mlflow run . \
           --experiment-name "$EXPERIMENT_NAME" \
-          --env-manager conda \
+          --env-manager virtualenv \
           -P experiment_name="$EXPERIMENT_NAME" \
           -P data_path="stroke_data_preprocessing" \
           $VERBOSE_FLAG
@@ -136,6 +131,7 @@ jobs:
         echo "Branch: ${{ github.ref_name }}" >> training_summary.txt
         echo "Commit: ${{ github.sha }}" >> training_summary.txt
         echo "Timestamp: $(date)" >> training_summary.txt
+        echo "Environment: Python virtualenv" >> training_summary.txt
         echo "MLflow runs location: ./mlruns" >> training_summary.txt
         
     - name: Upload training artifacts
