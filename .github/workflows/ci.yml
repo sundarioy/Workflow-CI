@@ -34,7 +34,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         
@@ -65,7 +65,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         
@@ -133,13 +133,14 @@ jobs:
         echo "MLflow runs location: ./mlruns" >> training_summary.txt
         
     - name: Upload training artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: mlflow-training-results
         path: |
           mlruns/
           training_summary.txt
         retention-days: 30
+        if-no-files-found: warn
 
   # Job 3: Training summary and notification
   summary:
