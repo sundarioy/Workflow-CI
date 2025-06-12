@@ -13,11 +13,19 @@ entry_points:
         type: string
         default: "stroke_data_preprocessing"
         description: "Path to the preprocessed data directory"
-      verbose:
-        type: bool
-        default: false
-        description: "Enable verbose logging"
-    command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path} {verbose}"
+    command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path}"
+  
+  verbose:
+    parameters:
+      experiment_name:
+        type: string
+        default: "stroke_prediction_ci"
+        description: "Name of the MLflow experiment"
+      data_path:
+        type: string
+        default: "stroke_data_preprocessing"
+        description: "Path to the preprocessed data directory"
+    command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path} --verbose"
   
   test:
     parameters:

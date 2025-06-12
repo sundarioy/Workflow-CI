@@ -96,24 +96,25 @@ jobs:
         # Set experiment name based on trigger
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           EXPERIMENT_NAME="${{ github.event.inputs.experiment_name }}"
-          VERBOSE_FLAG=""
-          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
-            VERBOSE_FLAG="--verbose"
-          fi
         else
           EXPERIMENT_NAME="stroke_prediction_ci_auto"
-          VERBOSE_FLAG=""
         fi
         
         echo "📊 Training with experiment: $EXPERIMENT_NAME"
         
         # Run the MLflow project with local environment (no virtualenv/conda)
+        if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
+          ENTRY_POINT="verbose"
+        else
+          ENTRY_POINT="main"
+        fi
+        
         mlflow run . \
           --experiment-name "$EXPERIMENT_NAME" \
           --env-manager local \
+          --entry-point "$ENTRY_POINT" \
           -P experiment_name="$EXPERIMENT_NAME" \
-          -P data_path="stroke_data_preprocessing" \
-          $VERBOSE_FLAG
+          -P data_path="stroke_data_preprocessing"
           
     - name: Verify training results
       run: |
