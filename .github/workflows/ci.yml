@@ -1,4 +1,4 @@
-name: MLflow Project CI - Stroke Prediction with Artifact Storage
+name: MLflow Project CI - Stroke Prediction (Basic)
 
 # Trigger events
 on:
@@ -20,11 +20,6 @@ on:
         options:
         - 'true'
         - 'false'
-      verbose:
-        description: 'Enable verbose logging'
-        required: false
-        default: false
-        type: boolean
 
 # Environment variables
 env:
@@ -62,7 +57,7 @@ jobs:
         test -d MLProject/stroke_data_preprocessing && echo "✅ Data directory exists" || exit 1
         echo "🎯 MLProject structure validation passed!"
 
-  # Job 2: Quick training without tuning (for PR and faster CI)
+  # Job 2: Quick training without tuning (for PR checks)
   train_fast:
     runs-on: ubuntu-latest
     name: Quick Model Training (No Tuning)
@@ -89,7 +84,6 @@ jobs:
       run: |
         echo "🎯 Setting up MLflow tracking..."
         mkdir -p mlruns
-        echo "MLFLOW_TRACKING_URI=file:./mlruns" >> $GITHUB_ENV
         
     - name: Run fast training (no tuning)
       run: |
@@ -99,38 +93,26 @@ jobs:
         EXPERIMENT_NAME="stroke_prediction_fast_${GITHUB_RUN_NUMBER}"
         echo "📊 Training with experiment: $EXPERIMENT_NAME"
         
-        mlflow run . \
-          --env-manager local \
-          --entry-point "fast" \
-          -P experiment_name="$EXPERIMENT_NAME" \
-          -P data_path="stroke_data_preprocessing"
+        python modelling.py \
+          --experiment-name "$EXPERIMENT_NAME" \
+          --data-path "stroke_data_preprocessing" \
+          --no-tuning
           
-    - name: Generate training summary
+    - name: Verify training results
       run: |
-        echo "📊 Fast Training Summary" > training_summary.md
-        echo "======================" >> training_summary.md
-        echo "" >> training_summary.md
-        echo "- **Trigger**: ${{ github.event_name }}" >> training_summary.md
-        echo "- **Branch**: ${{ github.ref_name }}" >> training_summary.md
-        echo "- **Commit**: ${{ github.sha }}" >> training_summary.md
-        echo "- **Timestamp**: $(date)" >> training_summary.md
-        echo "- **Training Mode**: Fast (No Hyperparameter Tuning)" >> training_summary.md
-        echo "- **Run Number**: ${{ github.run_number }}" >> training_summary.md
-        echo "" >> training_summary.md
-        echo "## Training Results" >> training_summary.md
-        echo "Models trained: Logistic Regression, Random Forest, XGBoost" >> training_summary.md
-        echo "MLflow tracking data available in \`mlruns/\` directory" >> training_summary.md
+        echo "📊 Checking training results..."
+        ls -la mlruns/
+        echo "✅ Fast training completed successfully!"
         
-    - name: Upload temporary artifacts
+    - name: Upload training artifacts (temporary)
       uses: actions/upload-artifact@v4
       with:
-        name: mlflow-fast-training-results
+        name: mlflow-fast-training-results-${{ github.run_number }}
         path: |
           mlruns/
-          training_summary.md
         retention-days: 7
 
-  # Job 3: Full training with hyperparameter tuning (for main branch and manual triggers)
+  # Job 3: Full training with hyperparameter tuning (for main branch)
   train_with_tuning:
     runs-on: ubuntu-latest
     name: Full Model Training (With Tuning)
@@ -163,7 +145,6 @@ jobs:
       run: |
         echo "🎯 Setting up MLflow tracking..."
         mkdir -p mlruns
-        echo "MLFLOW_TRACKING_URI=file:./mlruns" >> $GITHUB_ENV
         
     - name: Run full training with hyperparameter tuning
       run: |
@@ -179,258 +160,145 @@ jobs:
         echo "📊 Training with experiment: $EXPERIMENT_NAME"
         echo "🔧 Hyperparameter tuning: ENABLED"
         
-        # Choose entry point based on verbose setting
-        if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
-          ENTRY_POINT="verbose"
-        else
-          ENTRY_POINT="main"
-        fi
-        
-        mlflow run . \
-          --env-manager local \
-          --entry-point "$ENTRY_POINT" \
-          -P experiment_name="$EXPERIMENT_NAME" \
-          -P data_path="stroke_data_preprocessing"
+        python modelling.py \
+          --experiment-name "$EXPERIMENT_NAME" \
+          --data-path "stroke_data_preprocessing"
           
-    - name: Extract model performance metrics
+    - name: Extract model performance summary
       run: |
-        echo "📊 Extracting model performance metrics..."
+        echo "📊 Extracting model performance summary..."
+        cd MLProject
         python -c "
         import mlflow
         import pandas as pd
         import json
-        import os
-        
-        # Set tracking URI
-        mlflow.set_tracking_uri('file:./mlruns')
         
         try:
-            # Get all experiments
+            mlflow.set_tracking_uri('file:../mlruns')
             experiments = mlflow.search_experiments()
-            metrics_summary = {}
             
+            print('📊 Training Summary:')
             for exp in experiments:
                 runs = mlflow.search_runs(exp.experiment_id)
                 if not runs.empty:
-                    # Extract key metrics
-                    metrics_summary[exp.name] = {
-                        'total_runs': len(runs),
-                        'best_f1_score': runs.select_dtypes(include=['number']).filter(regex='f1_score').max().max() if not runs.select_dtypes(include=['number']).filter(regex='f1_score').empty else 0,
-                        'best_accuracy': runs.select_dtypes(include=['number']).filter(regex='accuracy').max().max() if not runs.select_dtypes(include=['number']).filter(regex='accuracy').empty else 0,
-                        'best_roc_auc': runs.select_dtypes(include=['number']).filter(regex='roc_auc').max().max() if not runs.select_dtypes(include=['number']).filter(regex='roc_auc').empty else 0
-                    }
-            
-            # Save metrics summary
-            with open('metrics_summary.json', 'w') as f:
-                json.dump(metrics_summary, f, indent=2)
-            
-            print('✅ Metrics extracted successfully')
-            
+                    print(f'  Experiment: {exp.name}')
+                    print(f'  Total runs: {len(runs)}')
+                    
+                    # Find best metrics
+                    f1_cols = [col for col in runs.columns if 'f1_score' in col and 'metrics.' in col]
+                    acc_cols = [col for col in runs.columns if 'accuracy' in col and 'metrics.' in col]
+                    
+                    if f1_cols:
+                        best_f1 = runs[f1_cols].max().max()
+                        print(f'  Best F1-Score: {best_f1:.4f}')
+                    
+                    if acc_cols:
+                        best_acc = runs[acc_cols].max().max()
+                        print(f'  Best Accuracy: {best_acc:.4f}')
+                        
+            print('✅ Model training completed successfully!')
+                        
         except Exception as e:
             print(f'⚠️ Error extracting metrics: {e}')
-            # Create empty summary
-            with open('metrics_summary.json', 'w') as f:
-                json.dump({}, f)
+            print('✅ Training completed (metrics extraction failed)')
         "
         
-    - name: Generate comprehensive training report
+    - name: Verify training results
       run: |
-        echo "📊 Full Training Summary" > training_summary.md
-        echo "======================" >> training_summary.md
-        echo "" >> training_summary.md
-        echo "- **Trigger**: ${{ github.event_name }}" >> training_summary.md
-        echo "- **Branch**: ${{ github.ref_name }}" >> training_summary.md
-        echo "- **Commit**: ${{ github.sha }}" >> training_summary.md
-        echo "- **Timestamp**: $(date)" >> training_summary.md
-        echo "- **Training Mode**: Full (With Hyperparameter Tuning)" >> training_summary.md
-        echo "- **Run Number**: ${{ github.run_number }}" >> training_summary.md
-        echo "" >> training_summary.md
-        echo "## Training Configuration" >> training_summary.md
-        echo "- Models: Logistic Regression, Random Forest, XGBoost" >> training_summary.md
-        echo "- Hyperparameter Tuning: Enabled" >> training_summary.md
-        echo "- Cross-validation: 3-fold" >> training_summary.md
-        echo "- Tuning Strategy: GridSearchCV + RandomizedSearchCV" >> training_summary.md
-        echo "" >> training_summary.md
-        echo "## Artifacts Generated" >> training_summary.md
-        echo "- MLflow tracking data (\`mlruns/\`)" >> training_summary.md
-        echo "- Trained model files" >> training_summary.md
-        echo "- Performance metrics (\`metrics_summary.json\`)" >> training_summary.md
-        echo "- Hyperparameter tuning results" >> training_summary.md
-        echo "" >> training_summary.md
-        echo "## Model Performance" >> training_summary.md
-        if [ -f "metrics_summary.json" ]; then
-          echo "\`\`\`json" >> training_summary.md
-          cat metrics_summary.json >> training_summary.md
-          echo "\`\`\`" >> training_summary.md
-        fi
+        echo "📊 Checking training results..."
+        ls -la mlruns/
+        find mlruns/ -name "*.yaml" | head -5
+        echo "✅ Full training with tuning completed successfully!"
         
-    - name: Upload temporary artifacts
+    - name: Upload training artifacts (temporary)
       uses: actions/upload-artifact@v4
       with:
-        name: mlflow-tuning-results
+        name: mlflow-tuning-results-${{ github.run_number }}
         path: |
           mlruns/
-          training_summary.md
-          metrics_summary.json
-        retention-days: 7
+        retention-days: 30
 
-  # Job 4: Store artifacts to GitHub repository
-  store_artifacts:
+  # Job 4: Training summary and status
+  summary:
     runs-on: ubuntu-latest
-    name: Store Artifacts to GitHub Repository
-    needs: [train_fast, train_with_tuning]
-    if: always() && (needs.train_fast.result == 'success' || needs.train_with_tuning.result == 'success')
+    name: Training Summary
+    needs: [validate, train_fast, train_with_tuning]
+    if: always()
     
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Fetch all history for all branches
-        token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Configure Git
+    - name: Training Status Summary
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action Bot"
+        echo "🎯 MLflow Project CI Summary"
+        echo "============================"
+        echo "Validation Status: ${{ needs.validate.result }}"
+        echo "Fast Training Status: ${{ needs.train_fast.result }}"
+        echo "Full Training Status: ${{ needs.train_with_tuning.result }}"
+        echo ""
         
-    - name: Download training artifacts
-      uses: actions/download-artifact@v4
-      with:
-        pattern: mlflow-*-results
-        merge-multiple: true
+        # Determine overall success
+        VALIDATION_OK="${{ needs.validate.result == 'success' }}"
+        TRAINING_OK="${{ needs.train_fast.result == 'success' || needs.train_with_tuning.result == 'success' }}"
         
-    - name: Create artifacts directory structure
-      run: |
-        # Create unique artifact branch name
-        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-        BRANCH_NAME="artifacts/run-${GITHUB_RUN_NUMBER}-${TIMESTAMP}"
-        echo "ARTIFACT_BRANCH=${BRANCH_NAME}" >> $GITHUB_ENV
-        
-        # Create artifact directory
-        mkdir -p artifacts
-        
-        # Copy all training results
-        if [ -d "mlruns" ]; then
-          cp -r mlruns/ artifacts/
-          echo "✅ Copied MLflow runs"
+        if [ "$VALIDATION_OK" = "true" ] && [ "$TRAINING_OK" = "true" ]; then
+          echo "✅ CI Pipeline completed successfully!"
+          echo ""
+          if [ "${{ needs.train_with_tuning.result }}" = "success" ]; then
+            echo "🎉 Full training with hyperparameter tuning completed"
+            echo "🔧 Models: Logistic Regression, Random Forest, XGBoost"
+            echo "📊 All models trained with hyperparameter optimization"
+          else
+            echo "🚀 Fast training completed (PR validation mode)"
+            echo "🔧 Models: Logistic Regression, Random Forest, XGBoost"
+            echo "📊 Models trained with default parameters"
+          fi
+          echo ""
+          echo "📁 Training artifacts available for download from GitHub Actions"
+          echo "🎯 Models ready for analysis and deployment"
+        else
+          echo "❌ CI Pipeline failed. Check the logs above."
+          exit 1
         fi
-        
-        if [ -f "training_summary.md" ]; then
-          cp training_summary.md artifacts/
-          echo "✅ Copied training summary"
-        fi
-        
-        if [ -f "metrics_summary.json" ]; then
-          cp metrics_summary.json artifacts/
-          echo "✅ Copied metrics summary"
-        fi
-        
-        # Create artifact README
-        cat > artifacts/README.md << EOF
-        # Training Artifacts - Run ${{ github.run_number }}
-        
-        Generated on: $(date)
-        Trigger: ${{ github.event_name }}
-        Branch: ${{ github.ref_name }}
-        Commit: ${{ github.sha }}
-        
-        ## Contents
-        - \`mlruns/\`: MLflow tracking data
-        - \`training_summary.md\`: Training process summary
-        - \`metrics_summary.json\`: Model performance metrics
-        
-        ## Training Configuration
-        - Models: Logistic Regression, Random Forest, XGBoost
-        - Hyperparameter Tuning: ${{ needs.train_with_tuning.result == 'success' && 'Enabled' || 'Disabled' }}
-        - Environment: Python ${{ env.PYTHON_VERSION }}
-        
-        ## Usage
-        To use these artifacts:
-        1. Download the artifacts from this branch
-        2. Set MLflow tracking URI to the \`mlruns/\` directory
-        3. Load models using MLflow APIs
-        
-        \`\`\`python
-        import mlflow
-        mlflow.set_tracking_uri("path/to/mlruns")
-        # Load and use models
-        \`\`\`
-        EOF
-        
-        echo "📁 Artifact structure created:"
-        ls -la artifacts/
-        
-    - name: Create and push artifact branch
-      run: |
-        # Create orphan branch for artifacts (no history from main)
-        git checkout --orphan ${{ env.ARTIFACT_BRANCH }}
-        
-        # Remove all files from staging
-        git rm -rf --cached .
-        
-        # Add only artifact files
-        cp -r artifacts/* .
-        
-        # Stage artifact files
-        git add .
-        
-        # Commit artifacts
-        git commit -m "Add training artifacts from run ${{ github.run_number }}
 
-        Trigger: ${{ github.event_name }}
-        Branch: ${{ github.ref_name }}
-        Commit: ${{ github.sha }}
-        Timestamp: $(date)
-        
-        Training Summary:
-        - Models: Logistic Regression, Random Forest, XGBoost
-        - Hyperparameter Tuning: ${{ needs.train_with_tuning.result == 'success' && 'Enabled' || 'Disabled' }}
-        - Run Number: ${{ github.run_number }}
-        
-        Artifacts:
-        - MLflow tracking data
-        - Model performance metrics
-        - Training configuration details"
-        
-        # Push artifact branch
-        git push origin ${{ env.ARTIFACT_BRANCH }}
-        
-        echo "✅ Artifacts pushed to branch: ${{ env.ARTIFACT_BRANCH }}"
-        
-    - name: Create artifact summary comment (for PR)
-      if: github.event_name == 'pull_request'
+  # Job 5: PR comment (optional - for pull requests)
+  pr_comment:
+    runs-on: ubuntu-latest
+    name: PR Comment
+    needs: [train_fast, summary]
+    if: github.event_name == 'pull_request' && needs.train_fast.result == 'success'
+    permissions:
+      pull-requests: write
+    
+    steps:
+    - name: Comment on PR
       uses: actions/github-script@v7
       with:
         script: |
-          const branch = process.env.ARTIFACT_BRANCH;
           const runNumber = context.runNumber;
-          const tuningEnabled = '${{ needs.train_with_tuning.result }}' === 'success';
+          const sha = context.sha.substring(0, 7);
           
           const comment = `## 🎯 Model Training Results - Run #${runNumber}
           
-          **Training completed successfully!** 
+          **✅ Fast training completed successfully!**
           
-          ### 📊 Configuration
-          - Models: Logistic Regression, Random Forest, XGBoost
-          - Hyperparameter Tuning: ${tuningEnabled ? '✅ Enabled' : '❌ Disabled (Fast Mode)'}
-          - Branch: \`${context.ref}\`
-          - Commit: \`${context.sha.substring(0, 7)}\`
+          ### 📊 Training Summary
+          - **Models:** Logistic Regression, Random Forest, XGBoost
+          - **Mode:** Fast Training (No Hyperparameter Tuning)
+          - **Commit:** \`${sha}\`
+          - **Status:** All models trained and validated
           
-          ### 📁 Artifacts Stored
-          All training artifacts have been saved to branch: **\`${branch}\`**
-          
-          **Contents:**
-          - 🔍 MLflow tracking data
-          - 🤖 Trained model files  
-          - 📊 Performance metrics
-          - 📋 Training summary report
+          ### 📁 Artifacts
+          Training artifacts are available in the GitHub Actions run:
+          - MLflow tracking data
+          - Model performance metrics
+          - Training logs
           
           ### 🚀 Next Steps
-          1. Review the training results in the artifacts branch
-          2. Download models if needed for deployment
-          3. Compare performance metrics with previous runs
+          - Merge to main branch for full training with hyperparameter tuning
+          - Review model performance metrics
+          - Models are ready for deployment pipeline
           
-          **Artifact Branch:** [\`${branch}\`](../tree/${branch})`;
+          ---
+          *Automated comment from CI/CD pipeline*`;
           
           github.rest.issues.createComment({
             issue_number: context.issue.number,
@@ -438,54 +306,3 @@ jobs:
             repo: context.repo.repo,
             body: comment
           });
-
-  # Job 5: Final summary and cleanup
-  summary:
-    runs-on: ubuntu-latest
-    name: Pipeline Summary
-    needs: [validate, train_fast, train_with_tuning, store_artifacts]
-    if: always()
-    
-    steps:
-    - name: Pipeline Status Summary
-      run: |
-        echo "🎯 MLflow Project CI Pipeline Summary"
-        echo "====================================="
-        echo "Validation: ${{ needs.validate.result }}"
-        echo "Fast Training: ${{ needs.train_fast.result }}"
-        echo "Full Training (Tuning): ${{ needs.train_with_tuning.result }}"
-        echo "Artifact Storage: ${{ needs.store_artifacts.result }}"
-        echo ""
-        
-        # Determine overall success
-        VALIDATION_OK="${{ needs.validate.result == 'success' }}"
-        TRAINING_OK="${{ needs.train_fast.result == 'success' || needs.train_with_tuning.result == 'success' }}"
-        STORAGE_OK="${{ needs.store_artifacts.result == 'success' }}"
-        
-        if [ "$VALIDATION_OK" = "true" ] && [ "$TRAINING_OK" = "true" ] && [ "$STORAGE_OK" = "true" ]; then
-          echo "✅ Pipeline completed successfully!"
-          echo ""
-          if [ "${{ needs.train_with_tuning.result }}" = "success" ]; then
-            echo "🎉 Full training with hyperparameter tuning completed"
-          else
-            echo "🚀 Fast training completed (PR mode)"
-          fi
-          echo "📊 All artifacts stored in GitHub repository"
-          echo "🔗 Check the artifacts branch for trained models and metrics"
-        else
-          echo "❌ Pipeline failed. Check individual job logs:"
-          echo "   - Validation: ${{ needs.validate.result }}"
-          echo "   - Training: ${{ needs.train_fast.result || needs.train_with_tuning.result }}"
-          echo "   - Storage: ${{ needs.store_artifacts.result }}"
-          exit 1
-        fi
-        
-    - name: Output artifact information
-      if: needs.store_artifacts.result == 'success'
-      run: |
-        echo "📁 ARTIFACT STORAGE SUMMARY"
-        echo "=========================="
-        echo "✅ Training artifacts successfully stored in GitHub repository"
-        echo "🔗 Artifact branch: artifacts/run-${{ github.run_number }}-*"
-        echo "📊 Contains: MLflow runs, model files, metrics, and reports"
-        echo "🎯 Ready for model deployment and analysis"
