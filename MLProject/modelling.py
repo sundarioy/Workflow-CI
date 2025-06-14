@@ -24,7 +24,7 @@ warnings.filterwarnings('ignore')
 class StrokeModelTrainer:
     """
     Train multiple ML models for stroke prediction with hyperparameter tuning
-    Compatible with MLflow Projects
+    Compatible with MLflow Projects - FIXED VERSION
     """
     
     def __init__(self, experiment_name="stroke_prediction_ci", data_path="stroke_data_preprocessing", enable_tuning=True):
@@ -45,7 +45,7 @@ class StrokeModelTrainer:
             mlflow.set_experiment(experiment_name)
             print(f"🎯 Experiment: {experiment_name}")
         else:
-            print(f"🎯 MLflow Project mode detected")
+            print(f"🎯 MLflow Project mode detected - models will be saved")
             
         print(f"📁 Data path: {data_path}")
         print(f"🔧 Hyperparameter tuning: {'Enabled' if enable_tuning else 'Disabled'}")
@@ -156,6 +156,8 @@ class StrokeModelTrainer:
         """Perform hyperparameter tuning"""
         if not param_grid:
             print(f"   No tuning for {model_name} - using default parameters")
+            # FIX: Fit model with default parameters when no tuning
+            model.fit(self.X_train, self.y_train)
             return model, {}
         
         print(f"   🔍 Tuning {model_name} with {len(param_grid)} parameter combinations...")
@@ -188,7 +190,7 @@ class StrokeModelTrainer:
         return search.best_estimator_, search.best_params_
     
     def train_model_with_tuning(self):
-        """Train models with hyperparameter tuning"""
+        """Train models with hyperparameter tuning - FIXED VERSION"""
         print("🚀 Training models with hyperparameter tuning...")
         
         models_config = [
@@ -215,6 +217,10 @@ class StrokeModelTrainer:
                 'log_func': mlflow.xgboost.log_model
             }
         ]
+        
+        best_overall_model = None
+        best_overall_f1 = 0
+        best_overall_name = ""
         
         for config in models_config:
             model_name = config['name']
@@ -262,17 +268,11 @@ class StrokeModelTrainer:
                 self.safe_log_metric(f"{prefix}_feature_importance_mean", np.mean(tuned_model.feature_importances_))
                 self.safe_log_metric(f"{prefix}_feature_importance_std", np.std(tuned_model.feature_importances_))
             
-            # Log model with signature and example (only in standalone mode)
-            if not self.is_mlflow_project:
-                signature = infer_signature(self.X_train, y_pred_proba)
-                input_example = self.X_train.iloc[:1]
-                
-                config['log_func'](
-                    tuned_model,
-                    name=f"{prefix}_tuned_model",
-                    signature=signature,
-                    input_example=input_example
-                )
+            # Track best overall model
+            if metrics['f1_score'] > best_overall_f1:
+                best_overall_f1 = metrics['f1_score']
+                best_overall_model = tuned_model
+                best_overall_name = model_name
             
             print(f"✅ {model_name}:")
             print(f"   Accuracy: {metrics['accuracy']:.4f}")
@@ -284,6 +284,36 @@ class StrokeModelTrainer:
             self.models[model_name] = tuned_model
             self.results[model_name] = metrics
             self.best_params[model_name] = best_params
+        
+        # FIXED: Always save the best model regardless of MLflow Project mode
+        if best_overall_model is not None:
+            print(f"\n🏆 Saving best model: {best_overall_name} (F1-Score: {best_overall_f1:.4f})")
+            
+            # Generate signature and example
+            signature = infer_signature(self.X_train, best_overall_model.predict_proba(self.X_test)[:, 1])
+            input_example = self.X_train.iloc[:1]
+            
+            # Save best model with 'model' artifact name
+            if best_overall_name == 'XGBoost':
+                mlflow.xgboost.log_model(
+                    best_overall_model,
+                    "model",  # Standard artifact name
+                    signature=signature,
+                    input_example=input_example
+                )
+            else:
+                mlflow.sklearn.log_model(
+                    best_overall_model,
+                    "model",  # Standard artifact name
+                    signature=signature,
+                    input_example=input_example
+                )
+            
+            # Log best model info
+            self.safe_log_param("best_model_name", best_overall_name)
+            self.safe_log_metric("best_model_f1_score", best_overall_f1)
+            
+            print("✅ Best model saved successfully!")
         
         self.print_summary()
     
@@ -468,7 +498,7 @@ def parse_arguments():
 
 def main():
     """Main function"""
-    print("🎯 Stroke Prediction Training Pipeline with Hyperparameter Tuning")
+    print("🎯 Stroke Prediction Training Pipeline with Hyperparameter Tuning - FIXED VERSION")
     print("="*70)
     
     args = parse_arguments()
