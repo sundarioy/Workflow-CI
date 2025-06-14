@@ -1,4 +1,4 @@
-name: stroke_prediction_mlflow_project
+name: stroke_prediction_mlflow_project_tuned
 
 python_env: python_env.yaml
 
@@ -15,11 +15,23 @@ entry_points:
         description: "Path to the preprocessed data directory"
     command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path}"
   
+  no_tuning:
+    parameters:
+      experiment_name:
+        type: string
+        default: "stroke_prediction_ci_no_tuning"
+        description: "Name of the MLflow experiment"
+      data_path:
+        type: string
+        default: "stroke_data_preprocessing"
+        description: "Path to the preprocessed data directory"
+    command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path} --no-tuning"
+  
   verbose:
     parameters:
       experiment_name:
         type: string
-        default: "stroke_prediction_ci"
+        default: "stroke_prediction_ci_verbose"
         description: "Name of the MLflow experiment"
       data_path:
         type: string
@@ -27,9 +39,14 @@ entry_points:
         description: "Path to the preprocessed data directory"
     command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path} --verbose"
   
-  test:
+  fast:
     parameters:
+      experiment_name:
+        type: string
+        default: "stroke_prediction_ci_fast"
+        description: "Name of the MLflow experiment"
       data_path:
         type: string
         default: "stroke_data_preprocessing"
-    command: "python -c 'import os; print(\"✅ MLProject structure is valid\"); print(f\"📁 Data path exists: {os.path.exists(\"{data_path}\")}\")';"
+        description: "Path to the preprocessed data directory"
+    command: "python modelling.py --experiment-name {experiment_name} --data-path {data_path} --no-tuning"

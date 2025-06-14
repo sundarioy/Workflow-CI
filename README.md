@@ -54,18 +54,35 @@ cd Workflow-CI
 ```
 
 #### 2. Run MLflow Project Locally
-```bash
-# Basic run with defaults
-mlflow run MLProject/
+
+**For Windows users (recommended):**
+```powershell
+# Set encoding to prevent Unicode errors
+$env:PYTHONIOENCODING="utf-8"
+
+# Use local environment (no virtualenv/pyenv required)
+mlflow run MLProject --env-manager local
 
 # Custom experiment name
-mlflow run MLProject/ -P experiment_name="my_experiment"
+mlflow run MLProject --env-manager local -P experiment_name="my_experiment"
 
 # Custom data path
-mlflow run MLProject/ -P data_path="custom_data_path"
+mlflow run MLProject --env-manager local -P data_path="custom_data_path"
+```
 
-# Verbose logging
-mlflow run MLProject/ -P verbose=true
+**For Unix/Linux/Mac:**
+```bash
+# Can use default environment manager or local
+mlflow run MLProject --env-manager local
+
+# Custom experiment name
+mlflow run MLProject --env-manager local -P experiment_name="my_experiment"
+```
+
+**Alternative (Direct Python execution - always works):**
+```bash
+cd MLProject
+python modelling.py --experiment-name my_experiment --data-path stroke_data_preprocessing
 ```
 
 #### 3. View Results
@@ -179,11 +196,16 @@ Based on preprocessing and baseline experiments:
 
 ### Local Testing
 ```bash
-# Test MLProject structure
-mlflow run MLProject/ --entry-point test
+# Test MLProject structure (direct Python - always works)
+cd MLProject
+python -c "import os; print('✅ MLProject structure is valid'); print(f'📁 Data path exists: {os.path.exists(\"stroke_data_preprocessing\")}')"
 
-# Run full training pipeline
-mlflow run MLProject/ -P verbose=true
+# Run full training pipeline (local environment)
+mlflow run MLProject --env-manager local
+
+# Alternative: Direct Python execution
+cd MLProject
+python modelling.py --experiment-name test_local --data-path stroke_data_preprocessing
 
 # Check results
 mlflow ui

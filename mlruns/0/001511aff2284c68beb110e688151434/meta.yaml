@@ -1,0 +1,14 @@
+artifact_uri: file:///D:/Dicoding/Proyek%208%20MLOps/Workflow-CI/mlruns/0/001511aff2284c68beb110e688151434/artifacts
+end_time: 1749887818955
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 001511aff2284c68beb110e688151434
+run_name: thoughtful-loon-594
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749887816265
+status: 4
+tags: []
+user_id: ramad
