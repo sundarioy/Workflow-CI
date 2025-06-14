@@ -21,7 +21,6 @@ on:
 # Environment variables
 env:
   PYTHON_VERSION: '3.11'
-  MLFLOW_TRACKING_URI: 'file:./mlruns'
 
 jobs:
   # Job 1: Basic validation
@@ -81,15 +80,14 @@ jobs:
         pip install mlflow>=2.0.0
         pip install -r requirements.txt
         
-    - name: Setup MLflow tracking
+    - name: Setup MLflow tracking (in MLProject directory)
       run: |
-        echo "🎯 Setting up MLflow tracking..."
-        # Create mlruns in root directory for easier artifact upload
-        mkdir -p mlruns
+        echo "🎯 Setting up MLflow tracking in MLProject directory..."
         cd MLProject
-        # Create symlink or copy mlruns to MLProject directory
-        ln -sf ../mlruns ./mlruns || cp -r ../mlruns ./mlruns
+        mkdir -p mlruns
         echo "MLFLOW_TRACKING_URI=file:./mlruns" >> $GITHUB_ENV
+        echo "📁 MLProject directory contents:"
+        ls -la
         
     - name: Run MLflow Project (Local Environment)
       run: |
@@ -105,7 +103,10 @@ jobs:
         
         echo "📊 Training with experiment: $EXPERIMENT_NAME"
         
-        # Run the MLflow project with local environment (no virtualenv/conda)
+        # Set MLflow tracking URI for this session
+        export MLFLOW_TRACKING_URI=file:./mlruns
+        
+        # Run the MLflow project with local environment
         if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
           ENTRY_POINT="verbose"
         else
@@ -119,58 +120,48 @@ jobs:
           -P experiment_name="$EXPERIMENT_NAME" \
           -P data_path="stroke_data_preprocessing"
           
-    - name: Copy MLflow results to root directory
-      run: |
-        echo "📁 Copying MLflow results to root directory..."
-        # Copy mlruns from MLProject directory to root
-        if [ -d "MLProject/mlruns" ]; then
-          cp -r MLProject/mlruns/* mlruns/ 2>/dev/null || cp -r MLProject/mlruns ./
-          echo "✅ MLflow runs copied successfully"
-        else
-          echo "⚠️ No mlruns directory found in MLProject/"
-        fi
-        
-        # List contents for debugging
-        echo "📋 Root directory contents:"
-        ls -la
-        echo "📋 MLruns directory contents:"
-        ls -la mlruns/ || echo "No mlruns directory found"
-        
     - name: Verify training results
       run: |
-        echo "📋 Checking training results..."
+        echo "📋 Checking training results in MLProject directory..."
+        cd MLProject
+        
         if [ -d "mlruns" ]; then
+          echo "✅ MLruns directory found!"
           ls -la mlruns/
-          echo "🔍 MLflow runs created:"
+          echo "🔍 MLflow experiment directories:"
+          find mlruns/ -type d -name "*" | head -10
+          echo "🔍 MLflow run files:"
           find mlruns/ -name "*.yaml" | head -5
           echo "✅ Training completed successfully!"
         else
           echo "❌ No mlruns directory found!"
-          echo "Checking MLProject directory:"
-          ls -la MLProject/
-          if [ -d "MLProject/mlruns" ]; then
-            echo "Found mlruns in MLProject directory:"
-            ls -la MLProject/mlruns/
-          fi
+          echo "Current directory contents:"
+          ls -la
         fi
         
     - name: Generate training summary
       run: |
-        echo "📊 Training Summary" > training_summary.txt
-        echo "==================" >> training_summary.txt
-        echo "Trigger: ${{ github.event_name }}" >> training_summary.txt
-        echo "Branch: ${{ github.ref_name }}" >> training_summary.txt
-        echo "Commit: ${{ github.sha }}" >> training_summary.txt
-        echo "Timestamp: $(date)" >> training_summary.txt
-        echo "Environment: Python local environment" >> training_summary.txt
-        echo "MLflow runs location: ./mlruns" >> training_summary.txt
-        echo "" >> training_summary.txt
-        echo "Directory structure:" >> training_summary.txt
-        ls -la >> training_summary.txt
-        echo "" >> training_summary.txt
+        cd MLProject
+        echo "📊 Training Summary" > ../training_summary.txt
+        echo "==================" >> ../training_summary.txt
+        echo "Trigger: ${{ github.event_name }}" >> ../training_summary.txt
+        echo "Branch: ${{ github.ref_name }}" >> ../training_summary.txt
+        echo "Commit: ${{ github.sha }}" >> ../training_summary.txt
+        echo "Timestamp: $(date)" >> ../training_summary.txt
+        echo "Environment: Python local environment" >> ../training_summary.txt
+        echo "MLflow runs location: MLProject/mlruns" >> ../training_summary.txt
+        echo "" >> ../training_summary.txt
+        echo "MLProject directory structure:" >> ../training_summary.txt
+        ls -la >> ../training_summary.txt
+        echo "" >> ../training_summary.txt
         if [ -d "mlruns" ]; then
-          echo "MLruns contents:" >> training_summary.txt
-          ls -la mlruns/ >> training_summary.txt
+          echo "MLruns contents:" >> ../training_summary.txt
+          ls -la mlruns/ >> ../training_summary.txt
+          echo "" >> ../training_summary.txt
+          echo "Experiment directories:" >> ../training_summary.txt
+          find mlruns/ -type d | head -10 >> ../training_summary.txt
+        else
+          echo "No mlruns directory found" >> ../training_summary.txt
         fi
         
     - name: Upload training artifacts
@@ -178,7 +169,6 @@ jobs:
       with:
         name: mlflow-training-results-${{ github.run_number }}
         path: |
-          mlruns/
           MLProject/mlruns/
           training_summary.txt
         retention-days: 30
@@ -203,6 +193,12 @@ jobs:
           echo "✅ All jobs completed successfully!"
           echo "🎉 Models trained and artifacts available for download"
           echo "📁 Check GitHub Actions artifacts for MLflow runs and training results"
+          echo ""
+          echo "🚀 Next Steps:"
+          echo "1. Download artifacts from GitHub Actions"
+          echo "2. Extract MLflow runs for analysis"
+          echo "3. Compare model performance"
+          echo "4. Deploy best performing model"
         else
           echo "❌ Some jobs failed. Check the logs above."
           echo "Debug info:"
