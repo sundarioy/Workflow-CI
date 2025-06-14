@@ -19,6 +19,8 @@ import os
 import sys
 
 warnings.filterwarnings('ignore')
+# Suppress specific MLflow deprecation warnings
+warnings.filterwarnings('ignore', category=FutureWarning, module='mlflow')
 
 
 class StrokeModelTrainer:
@@ -193,129 +195,140 @@ class StrokeModelTrainer:
         """Train models with hyperparameter tuning - FIXED VERSION"""
         print("🚀 Training models with hyperparameter tuning...")
         
-        models_config = [
-            {
-                'name': 'Logistic Regression',
-                'model': LogisticRegression(random_state=42, max_iter=2000),
-                'params': self.get_logistic_regression_params(),
-                'log_func': mlflow.sklearn.log_model
-            },
-            {
-                'name': 'Random Forest',
-                'model': RandomForestClassifier(random_state=42, n_jobs=-1),
-                'params': self.get_random_forest_params(),
-                'log_func': mlflow.sklearn.log_model
-            },
-            {
-                'name': 'XGBoost',
-                'model': xgb.XGBClassifier(
-                    random_state=42, 
-                    eval_metric='logloss',
-                    use_label_encoder=False
-                ),
-                'params': self.get_xgboost_params(),
-                'log_func': mlflow.xgboost.log_model
-            }
-        ]
-        
-        best_overall_model = None
-        best_overall_f1 = 0
-        best_overall_name = ""
-        
-        for config in models_config:
-            model_name = config['name']
-            print(f"\n🤖 Training {model_name}...")
+        # FIX: Add explicit run context for project mode
+        with mlflow.start_run() as run:
+            models_config = [
+                {
+                    'name': 'Logistic Regression',
+                    'model': LogisticRegression(random_state=42, max_iter=2000),
+                    'params': self.get_logistic_regression_params(),
+                    'log_func': mlflow.sklearn.log_model
+                },
+                {
+                    'name': 'Random Forest',
+                    'model': RandomForestClassifier(random_state=42, n_jobs=-1),
+                    'params': self.get_random_forest_params(),
+                    'log_func': mlflow.sklearn.log_model
+                },
+                {
+                    'name': 'XGBoost',
+                    'model': xgb.XGBClassifier(
+                        random_state=42, 
+                        eval_metric='logloss',
+                        use_label_encoder=False
+                    ),
+                    'params': self.get_xgboost_params(),
+                    'log_func': mlflow.xgboost.log_model
+                }
+            ]
             
-            start_time = time.time()
+            best_overall_model = None
+            best_overall_f1 = 0
+            best_overall_name = ""
             
-            # Hyperparameter tuning
-            tuned_model, best_params = self.tune_model(
-                config['model'], 
-                config['params'], 
-                model_name
-            )
-            tuning_time = time.time() - start_time
-            
-            # Train final model and evaluate
-            eval_start = time.time()
-            y_pred = tuned_model.predict(self.X_test)
-            y_pred_proba = tuned_model.predict_proba(self.X_test)[:, 1]
-            eval_time = time.time() - eval_start
-            
-            # Calculate metrics
-            metrics = self.calculate_metrics(self.y_test, y_pred, y_pred_proba)
-            
-            # Log parameters (both tuned and default)
-            prefix = model_name.lower().replace(' ', '_')
-            self.safe_log_param(f"{prefix}_model_type", tuned_model.__class__.__name__)
-            self.safe_log_param(f"{prefix}_tuning_enabled", self.enable_tuning)
-            
-            # Log best parameters
-            for param_name, param_value in best_params.items():
-                self.safe_log_param(f"{prefix}_{param_name}", param_value)
-            
-            # Log timing
-            self.safe_log_metric(f"{prefix}_tuning_time", tuning_time)
-            self.safe_log_metric(f"{prefix}_eval_time", eval_time)
-            self.safe_log_metric(f"{prefix}_total_time", tuning_time + eval_time)
-            
-            # Log performance metrics
-            for metric_name, metric_value in metrics.items():
-                self.safe_log_metric(f"{prefix}_{metric_name}", metric_value)
-            
-            # Log feature importance if available
-            if hasattr(tuned_model, 'feature_importances_'):
-                self.safe_log_metric(f"{prefix}_feature_importance_mean", np.mean(tuned_model.feature_importances_))
-                self.safe_log_metric(f"{prefix}_feature_importance_std", np.std(tuned_model.feature_importances_))
-            
-            # Track best overall model
-            if metrics['f1_score'] > best_overall_f1:
-                best_overall_f1 = metrics['f1_score']
-                best_overall_model = tuned_model
-                best_overall_name = model_name
-            
-            print(f"✅ {model_name}:")
-            print(f"   Accuracy: {metrics['accuracy']:.4f}")
-            print(f"   F1-Score: {metrics['f1_score']:.4f}")
-            print(f"   ROC-AUC: {metrics['roc_auc']:.4f}")
-            print(f"   Tuning time: {tuning_time:.2f}s")
-            
-            # Store results
-            self.models[model_name] = tuned_model
-            self.results[model_name] = metrics
-            self.best_params[model_name] = best_params
-        
-        # FIXED: Always save the best model regardless of MLflow Project mode
-        if best_overall_model is not None:
-            print(f"\n🏆 Saving best model: {best_overall_name} (F1-Score: {best_overall_f1:.4f})")
-            
-            # Generate signature and example
-            signature = infer_signature(self.X_train, best_overall_model.predict_proba(self.X_test)[:, 1])
-            input_example = self.X_train.iloc[:1]
-            
-            # Save best model with 'model' artifact name
-            if best_overall_name == 'XGBoost':
-                mlflow.xgboost.log_model(
-                    best_overall_model,
-                    "model",  # Standard artifact name
-                    signature=signature,
-                    input_example=input_example
+            for config in models_config:
+                model_name = config['name']
+                print(f"\n🤖 Training {model_name}...")
+                
+                start_time = time.time()
+                
+                # Hyperparameter tuning
+                tuned_model, best_params = self.tune_model(
+                    config['model'], 
+                    config['params'], 
+                    model_name
                 )
-            else:
-                mlflow.sklearn.log_model(
-                    best_overall_model,
-                    "model",  # Standard artifact name
-                    signature=signature,
-                    input_example=input_example
-                )
+                tuning_time = time.time() - start_time
+                
+                # Train final model and evaluate
+                eval_start = time.time()
+                y_pred = tuned_model.predict(self.X_test)
+                y_pred_proba = tuned_model.predict_proba(self.X_test)[:, 1]
+                eval_time = time.time() - eval_start
+                
+                # Calculate metrics
+                metrics = self.calculate_metrics(self.y_test, y_pred, y_pred_proba)
+                
+                # Log parameters (both tuned and default)
+                prefix = model_name.lower().replace(' ', '_')
+                self.safe_log_param(f"{prefix}_model_type", tuned_model.__class__.__name__)
+                self.safe_log_param(f"{prefix}_tuning_enabled", self.enable_tuning)
+                
+                # Log best parameters
+                for param_name, param_value in best_params.items():
+                    self.safe_log_param(f"{prefix}_{param_name}", param_value)
+                
+                # Log timing
+                self.safe_log_metric(f"{prefix}_tuning_time", tuning_time)
+                self.safe_log_metric(f"{prefix}_eval_time", eval_time)
+                self.safe_log_metric(f"{prefix}_total_time", tuning_time + eval_time)
+                
+                # Log performance metrics
+                for metric_name, metric_value in metrics.items():
+                    self.safe_log_metric(f"{prefix}_{metric_name}", metric_value)
+                
+                # Log feature importance if available
+                if hasattr(tuned_model, 'feature_importances_'):
+                    self.safe_log_metric(f"{prefix}_feature_importance_mean", np.mean(tuned_model.feature_importances_))
+                    self.safe_log_metric(f"{prefix}_feature_importance_std", np.std(tuned_model.feature_importances_))
+                
+                # Track best overall model
+                if metrics['f1_score'] > best_overall_f1:
+                    best_overall_f1 = metrics['f1_score']
+                    best_overall_model = tuned_model
+                    best_overall_name = model_name
+                
+                print(f"✅ {model_name}:")
+                print(f"   Accuracy: {metrics['accuracy']:.4f}")
+                print(f"   F1-Score: {metrics['f1_score']:.4f}")
+                print(f"   ROC-AUC: {metrics['roc_auc']:.4f}")
+                print(f"   Tuning time: {tuning_time:.2f}s")
+                
+                # Store results
+                self.models[model_name] = tuned_model
+                self.results[model_name] = metrics
+                self.best_params[model_name] = best_params
             
-            # Log best model info
-            self.safe_log_param("best_model_name", best_overall_name)
-            self.safe_log_metric("best_model_f1_score", best_overall_f1)
+            # FIXED: Always save the best model with proper context
+            if best_overall_model is not None:
+                print(f"\n🏆 Saving best model: {best_overall_name} (F1-Score: {best_overall_f1:.4f})")
+                
+                # Generate signature and example
+                signature = infer_signature(self.X_train, best_overall_model.predict_proba(self.X_test)[:, 1])
+                input_example = self.X_train.iloc[:1]
+                
+                # Save best model with consistent parameters
+                try:
+                    if best_overall_name == 'XGBoost':
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            mlflow.xgboost.log_model(
+                                best_overall_model,
+                                artifact_path="model",
+                                signature=signature,
+                                input_example=input_example
+                            )
+                    else:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            mlflow.sklearn.log_model(
+                                sk_model=best_overall_model,
+                                artifact_path="model",
+                                signature=signature,
+                                input_example=input_example
+                            )
+                    
+                    # Log best model info
+                    self.safe_log_param("best_model_name", best_overall_name)
+                    self.safe_log_metric("best_model_f1_score", best_overall_f1)
+                    
+                    print("✅ Best model saved successfully!")
+                
+                except Exception as e:
+                    print(f"❌ Error saving model: {str(e)}")
+                    print("Continuing without model artifacts...")
             
-            print("✅ Best model saved successfully!")
-        
-        self.print_summary()
+            self.print_summary()
     
     def train_model_standalone_with_individual_runs(self):
         """Train models with individual MLflow runs and tuning"""
@@ -399,12 +412,29 @@ class StrokeModelTrainer:
                 signature = infer_signature(self.X_train, y_pred_proba)
                 input_example = self.X_train.iloc[:1]
                 
-                config['log_func'](
-                    tuned_model,
-                    name=f"{model_name.lower().replace(' ', '_')}_tuned_model",
-                    signature=signature,
-                    input_example=input_example
-                )
+                try:
+                    if model_name == 'XGBoost':
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            mlflow.xgboost.log_model(
+                                tuned_model,
+                                artifact_path="model",
+                                signature=signature,
+                                input_example=input_example
+                            )
+                    else:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            mlflow.sklearn.log_model(
+                                sk_model=tuned_model,
+                                artifact_path="model",
+                                signature=signature,
+                                input_example=input_example
+                            )
+                    print(f"   ✅ Model artifacts saved successfully!")
+                    
+                except Exception as e:
+                    print(f"   ❌ Error saving model artifacts: {str(e)}")
                 
                 print(f"✅ {model_name}:")
                 print(f"   Accuracy: {metrics['accuracy']:.4f}")
