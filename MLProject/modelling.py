@@ -74,7 +74,7 @@ def train_stroke_prediction_model(dataset, target_column='stroke'):
     X, y = prepare_features_and_target(dataset, target_column)
     X_train_scaled, X_test_scaled, y_train, y_test = split_and_scale_data(X, y)
     
-    # Configure MLflow autologging before starting run
+    # Configure MLflow autologging
     mlflow.sklearn.autolog(
         log_model_signatures=True, 
         log_input_examples=True, 
@@ -82,10 +82,13 @@ def train_stroke_prediction_model(dataset, target_column='stroke'):
     )
     print("🔧 MLflow autolog enabled for sklearn models")
 
-    # Start MLflow run for tracking
-    with mlflow.start_run(run_name="Stroke_Prediction_LogisticRegression") as active_run:
-        print(f"🚀 Started MLflow run: {active_run.info.run_id}")
-
+    # Check if there's already an active run (from MLproject)
+    active_run = mlflow.active_run()
+    if active_run:
+        print(f"🔄 Using existing MLflow run: {active_run.info.run_id}")
+        run_id = active_run.info.run_id
+        
+        # Train model within existing run
         # Initialize model with optimized parameters
         classifier = LogisticRegression(
             C=100,
@@ -115,10 +118,47 @@ def train_stroke_prediction_model(dataset, target_column='stroke'):
         print(f"   F1-Score:  {performance_metrics['f1_score']:.4f}")
         print(f"   AUC-ROC:   {performance_metrics['auc_roc']:.4f}")
         
-        print(f"\n✅ Training completed. MLflow run ID: {active_run.info.run_id}")
-        print("💡 View results with: mlflow ui")
+        print(f"\n✅ Training completed using existing run: {run_id}")
         
-        return active_run.info.run_id
+    else:
+        # Create new run if none exists (local execution)
+        with mlflow.start_run(run_name="Stroke_Prediction_LogisticRegression") as new_run:
+            print(f"🚀 Started new MLflow run: {new_run.info.run_id}")
+            run_id = new_run.info.run_id
+
+            # Initialize model with optimized parameters
+            classifier = LogisticRegression(
+                C=100,
+                random_state=42,
+                max_iter=1000,
+                solver='liblinear',
+                penalty='l1'
+            )
+            
+            print(f"🤖 Training {classifier.__class__.__name__} model...")
+            
+            # Train the model
+            classifier.fit(X_train_scaled, y_train)
+            
+            # Generate predictions
+            test_predictions = classifier.predict(X_test_scaled)
+            test_probabilities = classifier.predict_proba(X_test_scaled)[:, 1]
+            
+            # Calculate performance metrics
+            performance_metrics = calculate_metrics(y_test, test_predictions, test_probabilities)
+            
+            # Display results
+            print(f"\n📊 Model Performance Results:")
+            print(f"   Accuracy:  {performance_metrics['accuracy']:.4f}")
+            print(f"   Precision: {performance_metrics['precision']:.4f}")
+            print(f"   Recall:    {performance_metrics['recall']:.4f}")
+            print(f"   F1-Score:  {performance_metrics['f1_score']:.4f}")
+            print(f"   AUC-ROC:   {performance_metrics['auc_roc']:.4f}")
+            
+            print(f"\n✅ Training completed. MLflow run ID: {run_id}")
+    
+    print("💡 View results with: mlflow ui")
+    return run_id
 
 if __name__ == "__main__":
     # Setup command line argument parsing
