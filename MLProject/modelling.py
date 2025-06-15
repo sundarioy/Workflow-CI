@@ -64,8 +64,7 @@ def calculate_metrics(y_true, y_pred, y_pred_proba):
 
 def train_stroke_prediction_model(dataset, target_column='stroke'):
     """
-    Train stroke prediction model using Logistic Regression.
-    MLflow tracking is handled by MLproject automatically.
+    Train stroke prediction model using Logistic Regression with MLflow tracking.
     """
     if dataset is None:
         print("❌ No dataset provided for training")
@@ -75,51 +74,56 @@ def train_stroke_prediction_model(dataset, target_column='stroke'):
     X, y = prepare_features_and_target(dataset, target_column)
     X_train_scaled, X_test_scaled, y_train, y_test = split_and_scale_data(X, y)
     
-    # Configure MLflow autologging - let MLproject handle run management
+    # End any existing run to ensure fresh start for autolog
+    active_run = mlflow.active_run()
+    if active_run:
+        print(f"🔄 Ending existing MLflow run: {active_run.info.run_id}")
+        mlflow.end_run()
+    
+    # Configure MLflow autologging BEFORE starting new run
     mlflow.sklearn.autolog(
         log_model_signatures=True, 
         log_input_examples=True, 
         log_post_training_metrics=True
     )
-    print("🔧 MLflow autolog enabled - run managed by MLproject")
+    print("🔧 MLflow autolog enabled for sklearn models")
 
-    # Initialize model with optimized parameters
-    classifier = LogisticRegression(
-        C=100,
-        random_state=42,
-        max_iter=1000,
-        solver='liblinear',
-        penalty='l1'
-    )
-    
-    print(f"🤖 Training {classifier.__class__.__name__} model...")
-    
-    # Train the model (autolog will handle MLflow tracking)
-    classifier.fit(X_train_scaled, y_train)
-    
-    # Generate predictions
-    test_predictions = classifier.predict(X_test_scaled)
-    test_probabilities = classifier.predict_proba(X_test_scaled)[:, 1]
-    
-    # Calculate performance metrics
-    performance_metrics = calculate_metrics(y_test, test_predictions, test_probabilities)
-    
-    # Display results
-    print(f"\n📊 Model Performance Results:")
-    print(f"   Accuracy:  {performance_metrics['accuracy']:.4f}")
-    print(f"   Precision: {performance_metrics['precision']:.4f}")
-    print(f"   Recall:    {performance_metrics['recall']:.4f}")
-    print(f"   F1-Score:  {performance_metrics['f1_score']:.4f}")
-    print(f"   AUC-ROC:   {performance_metrics['auc_roc']:.4f}")
-    
-    # Get current run info if available
-    current_run = mlflow.active_run()
-    if current_run:
-        run_id = current_run.info.run_id
-        print(f"\n✅ Training completed in MLflow run: {run_id}")
-    else:
-        print(f"\n✅ Training completed successfully")
-        run_id = "local_execution"
+    # Always create fresh run for optimal autolog performance
+    with mlflow.start_run(run_name="Stroke_Prediction_LogisticRegression") as fresh_run:
+        print(f"🚀 Started fresh MLflow run: {fresh_run.info.run_id}")
+        run_id = fresh_run.info.run_id
+
+        # Initialize model with optimized parameters
+        classifier = LogisticRegression(
+            C=100,
+            random_state=42,
+            max_iter=1000,
+            solver='liblinear',
+            penalty='l1'
+        )
+        
+        print(f"🤖 Training {classifier.__class__.__name__} model...")
+        
+        # Train the model - autolog will capture everything automatically
+        classifier.fit(X_train_scaled, y_train)
+        
+        # Generate predictions
+        test_predictions = classifier.predict(X_test_scaled)
+        test_probabilities = classifier.predict_proba(X_test_scaled)[:, 1]
+        
+        # Calculate performance metrics
+        performance_metrics = calculate_metrics(y_test, test_predictions, test_probabilities)
+        
+        # Display results
+        print(f"\n📊 Model Performance Results:")
+        print(f"   Accuracy:  {performance_metrics['accuracy']:.4f}")
+        print(f"   Precision: {performance_metrics['precision']:.4f}")
+        print(f"   Recall:    {performance_metrics['recall']:.4f}")
+        print(f"   F1-Score:  {performance_metrics['f1_score']:.4f}")
+        print(f"   AUC-ROC:   {performance_metrics['auc_roc']:.4f}")
+        
+        print(f"\n✅ Training completed. MLflow run ID: {run_id}")
+        print("🎯 Full model artifacts should be logged by autolog")
     
     print("💡 View results with: mlflow ui")
     return run_id
@@ -174,7 +178,7 @@ if __name__ == "__main__":
             
             if model_run_id:
                 print(f"\n🎉 Model training successful!")
-                print(f"📝 Run managed by MLproject")
+                print(f"📝 Run ID: {model_run_id}")
                 print(f"🔗 Access results: mlflow ui")
             else:
                 print("❌ Model training failed")
