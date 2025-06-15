@@ -2,269 +2,180 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 import mlflow
 import mlflow.sklearn
-import mlflow.xgboost
-import xgboost as xgb
 import argparse
 import warnings
 warnings.filterwarnings('ignore')
 
-def load_preprocessed_data(file_path):
-    """Memuat dataset yang sudah diproses."""
+def load_data(file_path):
+    """Load the preprocessed dataset from file path."""
     try:
-        df = pd.read_csv(file_path)
-        print(f"Dataset preprocessed berhasil dimuat dari {file_path}")
-        print(f"Shape dataset: {df.shape}")
-        return df
+        data = pd.read_csv(file_path)
+        print(f"✅ Data loaded successfully from {file_path}")
+        print(f"📊 Dataset shape: {data.shape}")
+        return data
     except FileNotFoundError:
-        print(f"Error: File {file_path} tidak ditemukan.")
+        print(f"❌ Error: File {file_path} not found.")
+        return None
+    except Exception as e:
+        print(f"❌ Error loading data: {str(e)}")
         return None
 
-def train_logistic_regression_model(X_train_scaled, X_test_scaled, y_train, y_test):
-    """Melatih model Logistic Regression dengan MLflow autolog."""
+def prepare_features_and_target(data, target_col='stroke'):
+    """Separate features and target variable."""
+    features = data.drop(target_col, axis=1)
+    target = data[target_col]
     
-    with mlflow.start_run(run_name="Logistic_Regression_Run") as run:
-        # Inisialisasi MLflow autolog di dalam run
-        mlflow.sklearn.autolog(log_model_signatures=True, log_input_examples=True)
-        print("MLflow autolog diaktifkan untuk Scikit-Learn.")
-        print(f"Memulai MLflow Run ID: {run.info.run_id}")
+    print(f"🎯 Features shape: {features.shape}")
+    print(f"🎯 Target shape: {target.shape}")
+    print(f"📈 Target distribution: {target.value_counts().to_dict()}")
+    
+    return features, target
 
-        # Inisialisasi dan latih model
-        model = LogisticRegression(
+def split_and_scale_data(X, y, test_ratio=0.2, random_seed=42):
+    """Split data into train/test sets and apply scaling."""
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_ratio, random_state=random_seed, stratify=y
+    )
+    print(f"🔄 Data split - Train: {len(X_train)}, Test: {len(X_test)}")
+    
+    # Apply feature scaling
+    feature_scaler = StandardScaler()
+    X_train_scaled = feature_scaler.fit_transform(X_train)
+    X_test_scaled = feature_scaler.transform(X_test)
+    print("⚖️ Features scaled using StandardScaler")
+    
+    return X_train_scaled, X_test_scaled, y_train, y_test
+
+def calculate_metrics(y_true, y_pred, y_pred_proba):
+    """Calculate all evaluation metrics."""
+    metrics = {
+        'accuracy': accuracy_score(y_true, y_pred),
+        'precision': precision_score(y_true, y_pred),
+        'recall': recall_score(y_true, y_pred),
+        'f1_score': f1_score(y_true, y_pred),
+        'auc_roc': roc_auc_score(y_true, y_pred_proba)
+    }
+    return metrics
+
+def train_stroke_prediction_model(dataset, target_column='stroke'):
+    """
+    Train stroke prediction model using Logistic Regression with MLflow tracking.
+    """
+    if dataset is None:
+        print("❌ No dataset provided for training")
+        return None
+
+    # Prepare data
+    X, y = prepare_features_and_target(dataset, target_column)
+    X_train_scaled, X_test_scaled, y_train, y_test = split_and_scale_data(X, y)
+    
+    # Configure MLflow autologging before starting run
+    mlflow.sklearn.autolog(
+        log_model_signatures=True, 
+        log_input_examples=True, 
+        log_post_training_metrics=True
+    )
+    print("🔧 MLflow autolog enabled for sklearn models")
+
+    # Start MLflow run for tracking
+    with mlflow.start_run(run_name="Stroke_Prediction_LogisticRegression") as active_run:
+        print(f"🚀 Started MLflow run: {active_run.info.run_id}")
+
+        # Initialize model with optimized parameters
+        classifier = LogisticRegression(
             C=100,
             random_state=42,
             max_iter=1000,
             solver='liblinear',
             penalty='l1'
         )
-        print(f"Melatih model: {type(model).__name__}")
-        model.fit(X_train_scaled, y_train)
-
-        # Prediksi pada data uji
-        y_pred = model.predict(X_test_scaled)
-        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-
-        # Evaluasi model
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        auc = roc_auc_score(y_test, y_pred_proba)
-
-        print(f"\nMetrik Model pada Data Uji ({type(model).__name__}):")
-        print(f"  Accuracy: {accuracy:.4f}")
-        print(f"  Precision: {precision:.4f}")
-        print(f"  Recall: {recall:.4f}")
-        print(f"  F1-score: {f1:.4f}")
-        print(f"  AUC: {auc:.4f}")
-
-        print(f"MLflow Run Selesai. Cek MLflow Tracking UI di folder 'mlruns'.")
-        return run.info.run_id
-
-def train_random_forest_model(X_train_scaled, X_test_scaled, y_train, y_test):
-    """Melatih model Random Forest dengan MLflow autolog."""
-    
-    with mlflow.start_run(run_name="Random_Forest_Run") as run:
-        # Inisialisasi MLflow autolog di dalam run
-        mlflow.sklearn.autolog(log_model_signatures=True, log_input_examples=True)
-        print("MLflow autolog diaktifkan untuk Scikit-Learn.")
-        print(f"Memulai MLflow Run ID: {run.info.run_id}")
-
-        # Inisialisasi dan latih model
-        model = RandomForestClassifier(
-            n_estimators=300,
-            random_state=42,
-            n_jobs=-1,
-            min_samples_split=5,
-            min_samples_leaf=1,
-            max_features='log2',
-            max_depth=None,
-            bootstrap=False
-        )
-        print(f"Melatih model: {type(model).__name__}")
-        model.fit(X_train_scaled, y_train)
-
-        # Prediksi pada data uji
-        y_pred = model.predict(X_test_scaled)
-        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-
-        # Evaluasi model
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        auc = roc_auc_score(y_test, y_pred_proba)
-
-        print(f"\nMetrik Model pada Data Uji ({type(model).__name__}):")
-        print(f"  Accuracy: {accuracy:.4f}")
-        print(f"  Precision: {precision:.4f}")
-        print(f"  Recall: {recall:.4f}")
-        print(f"  F1-score: {f1:.4f}")
-        print(f"  AUC: {auc:.4f}")
-
-        print(f"MLflow Run Selesai. Cek MLflow Tracking UI di folder 'mlruns'.")
-        return run.info.run_id
-
-def train_xgboost_model(X_train_scaled, X_test_scaled, y_train, y_test):
-    """Melatih model XGBoost dengan MLflow autolog."""
-    
-    with mlflow.start_run(run_name="XGBoost_Run") as run:
-        # Inisialisasi MLflow autolog di dalam run
-        mlflow.xgboost.autolog(log_model_signatures=True, log_input_examples=True)
-        print("MLflow autolog diaktifkan untuk XGBoost.")
-        print(f"Memulai MLflow Run ID: {run.info.run_id}")
-
-        # Inisialisasi dan latih model
-        model = xgb.XGBClassifier(
-            n_estimators=500,
-            random_state=42,
-            eval_metric='logloss',
-            use_label_encoder=False,
-            reg_lambda=1,
-            subsample=0.9,
-            reg_alpha=0.1,
-            max_depth=6,
-            learning_rate=0.1,
-            colsample_bytree=1.0
-        )
-        print(f"Melatih model: {type(model).__name__}")
-        model.fit(X_train_scaled, y_train)
-
-        # Prediksi pada data uji
-        y_pred = model.predict(X_test_scaled)
-        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-
-        # Evaluasi model
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        auc = roc_auc_score(y_test, y_pred_proba)
-
-        print(f"\nMetrik Model pada Data Uji ({type(model).__name__}):")
-        print(f"  Accuracy: {accuracy:.4f}")
-        print(f"  Precision: {precision:.4f}")
-        print(f"  Recall: {recall:.4f}")
-        print(f"  F1-score: {f1:.4f}")
-        print(f"  AUC: {auc:.4f}")
-
-        print(f"MLflow Run Selesai. Cek MLflow Tracking UI di folder 'mlruns'.")
-        return run.info.run_id
-
-def train_models(df, target_column='stroke'):
-    """
-    Melatih semua model machine learning dengan MLflow autolog.
-    """
-    if df is None:
-        return
-
-    # 1. Pemisahan Fitur (X) dan Target (y)
-    X = df.drop(target_column, axis=1)
-    y = df[target_column]
-    print(f"Bentuk X: {X.shape}, Bentuk y: {y.shape}")
-    print(f"Distribusi target: {y.value_counts().to_dict()}")
-
-    # 2. Pembagian Data Latih dan Uji
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    print(f"Data dibagi menjadi data latih ({len(X_train)} baris) dan data uji ({len(X_test)} baris).")
-
-    # 3. Scaling Fitur (untuk konsistensi dengan preprocessing)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    print("Fitur telah di-scale menggunakan StandardScaler.")
-
-    # 4. Melatih semua model
-    print("\n🚀 Memulai pelatihan semua model...")
-    
-    results = {}
-    
-    # Train Logistic Regression
-    print("\n" + "="*50)
-    print("📊 TRAINING LOGISTIC REGRESSION")
-    print("="*50)
-    lr_run_id = train_logistic_regression_model(X_train_scaled, X_test_scaled, y_train, y_test)
-    if lr_run_id:
-        results['Logistic Regression'] = lr_run_id
-    
-    # Train Random Forest
-    print("\n" + "="*50)
-    print("🌳 TRAINING RANDOM FOREST")
-    print("="*50)
-    rf_run_id = train_random_forest_model(X_train_scaled, X_test_scaled, y_train, y_test)
-    if rf_run_id:
-        results['Random Forest'] = rf_run_id
-    
-    # Train XGBoost
-    print("\n" + "="*50)
-    print("🚀 TRAINING XGBOOST")
-    print("="*50)
-    xgb_run_id = train_xgboost_model(X_train_scaled, X_test_scaled, y_train, y_test)
-    if xgb_run_id:
-        results['XGBoost'] = xgb_run_id
-
-    # Summary
-    print("\n" + "="*60)
-    print("✅ SUMMARY - SEMUA MODEL TELAH DILATIH")
-    print("="*60)
-    for model_name, run_id in results.items():
-        print(f"  {model_name}: {run_id}")
-    
-    return results
+        
+        print(f"🤖 Training {classifier.__class__.__name__} model...")
+        
+        # Train the model
+        classifier.fit(X_train_scaled, y_train)
+        
+        # Generate predictions
+        test_predictions = classifier.predict(X_test_scaled)
+        test_probabilities = classifier.predict_proba(X_test_scaled)[:, 1]
+        
+        # Calculate performance metrics
+        performance_metrics = calculate_metrics(y_test, test_predictions, test_probabilities)
+        
+        # Display results
+        print(f"\n📊 Model Performance Results:")
+        print(f"   Accuracy:  {performance_metrics['accuracy']:.4f}")
+        print(f"   Precision: {performance_metrics['precision']:.4f}")
+        print(f"   Recall:    {performance_metrics['recall']:.4f}")
+        print(f"   F1-Score:  {performance_metrics['f1_score']:.4f}")
+        print(f"   AUC-ROC:   {performance_metrics['auc_roc']:.4f}")
+        
+        print(f"\n✅ Training completed. MLflow run ID: {active_run.info.run_id}")
+        print("💡 View results with: mlflow ui")
+        
+        return active_run.info.run_id
 
 if __name__ == "__main__":
-    # Argument parsing untuk MLproject compatibility
-    parser = argparse.ArgumentParser(description='Train stroke prediction models')
-    parser.add_argument('--data_path', 
-                       default='dataset_preprocessing/train_data_processed.csv',
-                       help='Path to preprocessed data file')
-    parser.add_argument('--experiment_name', 
-                       default='stroke_prediction_github_actions',
-                       help='MLflow experiment name')
+    # Setup command line argument parsing
+    arg_parser = argparse.ArgumentParser(
+        description='Train stroke prediction model with MLflow tracking'
+    )
+    arg_parser.add_argument(
+        '--data_path', 
+        type=str,
+        default='dataset_preprocessing/train_data_processed.csv',
+        help='Path to the preprocessed training data'
+    )
+    arg_parser.add_argument(
+        '--experiment_name', 
+        type=str,
+        default='stroke_prediction_github_actions',
+        help='Name of the MLflow experiment'
+    )
     
-    args = parser.parse_args()
+    # Parse arguments
+    args = arg_parser.parse_args()
     
-    # Set experiment name
+    # Configure MLflow experiment
     mlflow.set_experiment(args.experiment_name)
-    print(f"MLflow experiment: {args.experiment_name}")
+    print(f"🎯 MLflow experiment set to: {args.experiment_name}")
     
-    # Disable any existing autolog to prevent conflicts
-    mlflow.autolog(disable=True)
-    print("Existing autolog disabled to prevent conflicts")
+    # Load and validate data
+    training_data = load_data(args.data_path)
     
-    # Memuat data
-    df_preprocessed = load_preprocessed_data(args.data_path)
-
-    if df_preprocessed is not None:
-        # Pastikan tidak ada nilai NaN sebelum melatih model
-        print(f"\nJumlah nilai NaN sebelum penanganan:")
-        print(df_preprocessed.isnull().sum())
+    if training_data is not None:
+        # Check for missing values
+        missing_values = training_data.isnull().sum()
+        print(f"\n🔍 Missing values check:")
+        print(missing_values)
         
-        # Handle missing values
-        initial_rows = len(df_preprocessed)
-        df_preprocessed.dropna(inplace=True)
-        final_rows = len(df_preprocessed)
+        # Clean data by removing missing values
+        original_size = len(training_data)
+        training_data.dropna(inplace=True)
+        cleaned_size = len(training_data)
         
-        print(f"Jumlah baris setelah menghapus NaN: {final_rows} (dari {initial_rows})")
-
-        if not df_preprocessed.empty:
-            # Melatih semua model
-            results = train_models(df_preprocessed.copy(), target_column='stroke')
+        print(f"🧹 Data cleaning: {original_size} → {cleaned_size} rows")
+        
+        # Proceed with training if data is sufficient
+        if not training_data.empty and cleaned_size > 50:
+            model_run_id = train_stroke_prediction_model(
+                training_data.copy(), 
+                target_column='stroke'
+            )
             
-            if results:
-                print(f"\n🎉 Pelatihan selesai! Total {len(results)} model berhasil dilatih.")
-                print("📊 Hasil tracking tersimpan di MLflow.")
-                print("🔗 Untuk melihat hasil: mlflow ui")
+            if model_run_id:
+                print(f"\n🎉 Model training successful!")
+                print(f"📝 Run ID: {model_run_id}")
+                print(f"🔗 Access results: mlflow ui")
             else:
-                print("❌ Tidak ada model yang berhasil dilatih.")
+                print("❌ Model training failed")
         else:
-            print("DataFrame kosong setelah menghapus NaN, pelatihan dibatalkan.")
+            print("❌ Insufficient data for training after cleaning")
     else:
-        print(f"❌ Gagal memuat data dari {args.data_path}")
-        print("Pastikan file preprocessing telah dijalankan terlebih dahulu.")
+        print(f"❌ Failed to load data from: {args.data_path}")
+        print("💡 Ensure preprocessing has been completed first")
