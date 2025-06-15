@@ -27,7 +27,7 @@ jobs:
         with:
           auto-update-conda: true
           python-version: '3.11' # Sesuaikan
-          activate-environment: mlflow-insurance-env # Nama environment dari conda.yaml kita
+          activate-environment: mlflow-stroke-env # Nama environment dari conda.yaml kita
           environment-file: MLProject/conda.yaml # Path ke conda.yaml dari root repo
           use-mamba: false # Set false untuk menggunakan conda
 
@@ -39,7 +39,7 @@ jobs:
       - name: Run MLflow Project
         shell: bash -l {0} # Memastikan environment conda aktif
         run: |
-          mlflow run . -P data_path="insurance_dataset_preprocessed.csv" -P experiment_name="CI_Run_From_GitHub"
+          mlflow run . -P data_path="dataset_preprocessing/train_data_processed.csv" -P experiment_name="CI_Run_From_GitHub_Stroke"
 
       - name: Archive mlruns folder
         shell: bash -l {0}
