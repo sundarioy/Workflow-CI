@@ -26,11 +26,11 @@ def load_preprocessed_data(file_path):
 
 def train_logistic_regression_model(X_train_scaled, X_test_scaled, y_train, y_test):
     """Melatih model Logistic Regression dengan MLflow autolog."""
-    # Inisialisasi MLflow autolog
-    mlflow.sklearn.autolog(log_model_signatures=True, log_input_examples=True)
-    print("MLflow autolog diaktifkan untuk Scikit-Learn.")
-
+    
     with mlflow.start_run(run_name="Logistic_Regression_Run") as run:
+        # Inisialisasi MLflow autolog di dalam run
+        mlflow.sklearn.autolog(log_model_signatures=True, log_input_examples=True)
+        print("MLflow autolog diaktifkan untuk Scikit-Learn.")
         print(f"Memulai MLflow Run ID: {run.info.run_id}")
 
         # Inisialisasi dan latih model
@@ -67,11 +67,11 @@ def train_logistic_regression_model(X_train_scaled, X_test_scaled, y_train, y_te
 
 def train_random_forest_model(X_train_scaled, X_test_scaled, y_train, y_test):
     """Melatih model Random Forest dengan MLflow autolog."""
-    # Inisialisasi MLflow autolog
-    mlflow.sklearn.autolog(log_model_signatures=True, log_input_examples=True)
-    print("MLflow autolog diaktifkan untuk Scikit-Learn.")
-
+    
     with mlflow.start_run(run_name="Random_Forest_Run") as run:
+        # Inisialisasi MLflow autolog di dalam run
+        mlflow.sklearn.autolog(log_model_signatures=True, log_input_examples=True)
+        print("MLflow autolog diaktifkan untuk Scikit-Learn.")
         print(f"Memulai MLflow Run ID: {run.info.run_id}")
 
         # Inisialisasi dan latih model
@@ -111,11 +111,11 @@ def train_random_forest_model(X_train_scaled, X_test_scaled, y_train, y_test):
 
 def train_xgboost_model(X_train_scaled, X_test_scaled, y_train, y_test):
     """Melatih model XGBoost dengan MLflow autolog."""
-    # Inisialisasi MLflow autolog
-    mlflow.xgboost.autolog(log_model_signatures=True, log_input_examples=True)
-    print("MLflow autolog diaktifkan untuk XGBoost.")
-
+    
     with mlflow.start_run(run_name="XGBoost_Run") as run:
+        # Inisialisasi MLflow autolog di dalam run
+        mlflow.xgboost.autolog(log_model_signatures=True, log_input_examples=True)
+        print("MLflow autolog diaktifkan untuk XGBoost.")
         print(f"Memulai MLflow Run ID: {run.info.run_id}")
 
         # Inisialisasi dan latih model
@@ -233,6 +233,10 @@ if __name__ == "__main__":
     # Set experiment name
     mlflow.set_experiment(args.experiment_name)
     print(f"MLflow experiment: {args.experiment_name}")
+    
+    # Disable any existing autolog to prevent conflicts
+    mlflow.autolog(disable=True)
+    print("Existing autolog disabled to prevent conflicts")
     
     # Memuat data
     df_preprocessed = load_preprocessed_data(args.data_path)
