@@ -1,208 +1,64 @@
-name: MLflow Project CI - Stroke Prediction
+name: CI Model Retraining
 
-# Trigger events
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:  # Manual trigger
-    inputs:
-      experiment_name:
-        description: 'MLflow experiment name'
-        required: false
-        default: 'stroke_prediction_ci'
-      verbose:
-        description: 'Enable verbose logging'
-        required: false
-        default: false
-        type: boolean
+on: workflow_dispatch # Trigger untuk menjalankan workflow
 
-# Environment variables
-env:
-  PYTHON_VERSION: '3.11'
+permissions:
+  contents: write # ✅ This allows the workflow to push commits
 
 jobs:
-  # Job 1: Basic validation
-  validate:
+  retrain-model:
     runs-on: ubuntu-latest
-    name: Validate MLProject Structure
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        
-    - name: Install MLflow
-      run: |
-        python -m pip install --upgrade pip
-        pip install mlflow>=2.0.0
-        
-    - name: Validate MLProject structure
-      run: |
-        echo "🔍 Validating MLProject structure..."
-        ls -la MLProject/
-        echo "📋 Checking required files:"
-        test -f MLProject/MLProject && echo "✅ MLProject file exists" || exit 1
-        test -f MLProject/python_env.yaml && echo "✅ python_env.yaml exists" || exit 1
-        test -f MLProject/modelling.py && echo "✅ modelling.py exists" || exit 1
-        test -d MLProject/stroke_data_preprocessing && echo "✅ Data directory exists" || exit 1
-        echo "🎯 MLProject structure validation passed!"
 
-  # Job 2: Train models using MLflow Project
-  train:
-    runs-on: ubuntu-latest
-    name: Train ML Models
-    needs: validate
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential
-        
-    - name: Install MLflow and dependencies
-      run: |
-        cd MLProject
-        python -m pip install --upgrade pip
-        pip install mlflow>=2.0.0
-        pip install -r requirements.txt
-        
-    - name: Setup MLflow tracking (in MLProject directory)
-      run: |
-        echo "🎯 Setting up MLflow tracking in MLProject directory..."
-        cd MLProject
-        mkdir -p mlruns
-        echo "MLFLOW_TRACKING_URI=file:./mlruns" >> $GITHUB_ENV
-        echo "📁 MLProject directory contents:"
-        ls -la
-        
-    - name: Run MLflow Project (Local Environment)
-      run: |
-        echo "🚀 Starting MLflow Project execution with local environment..."
-        cd MLProject
-        
-        # Set experiment name based on trigger
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          EXPERIMENT_NAME="${{ github.event.inputs.experiment_name }}"
-        else
-          EXPERIMENT_NAME="stroke_prediction_ci_auto"
-        fi
-        
-        echo "📊 Training with experiment: $EXPERIMENT_NAME"
-        
-        # Set MLflow tracking URI for this session
-        export MLFLOW_TRACKING_URI=file:./mlruns
-        
-        # Run the MLflow project with local environment
-        if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
-          ENTRY_POINT="verbose"
-        else
-          ENTRY_POINT="main"
-        fi
-        
-        mlflow run . \
-          --experiment-name "$EXPERIMENT_NAME" \
-          --env-manager local \
-          --entry-point "$ENTRY_POINT" \
-          -P experiment_name="$EXPERIMENT_NAME" \
-          -P data_path="stroke_data_preprocessing"
-          
-    - name: Verify training results
-      run: |
-        echo "📋 Checking training results in MLProject directory..."
-        cd MLProject
-        
-        if [ -d "mlruns" ]; then
-          echo "✅ MLruns directory found!"
-          ls -la mlruns/
-          echo "🔍 MLflow experiment directories:"
-          find mlruns/ -type d -name "*" | head -10
-          echo "🔍 MLflow run files:"
-          find mlruns/ -name "*.yaml" | head -5
-          echo "✅ Training completed successfully!"
-        else
-          echo "❌ No mlruns directory found!"
-          echo "Current directory contents:"
-          ls -la
-        fi
-        
-    - name: Generate training summary
-      run: |
-        cd MLProject
-        echo "📊 Training Summary" > ../training_summary.txt
-        echo "==================" >> ../training_summary.txt
-        echo "Trigger: ${{ github.event_name }}" >> ../training_summary.txt
-        echo "Branch: ${{ github.ref_name }}" >> ../training_summary.txt
-        echo "Commit: ${{ github.sha }}" >> ../training_summary.txt
-        echo "Timestamp: $(date)" >> ../training_summary.txt
-        echo "Environment: Python local environment" >> ../training_summary.txt
-        echo "MLflow runs location: MLProject/mlruns" >> ../training_summary.txt
-        echo "" >> ../training_summary.txt
-        echo "MLProject directory structure:" >> ../training_summary.txt
-        ls -la >> ../training_summary.txt
-        echo "" >> ../training_summary.txt
-        if [ -d "mlruns" ]; then
-          echo "MLruns contents:" >> ../training_summary.txt
-          ls -la mlruns/ >> ../training_summary.txt
-          echo "" >> ../training_summary.txt
-          echo "Experiment directories:" >> ../training_summary.txt
-          find mlruns/ -type d | head -10 >> ../training_summary.txt
-        else
-          echo "No mlruns directory found" >> ../training_summary.txt
-        fi
-        
-    - name: Upload training artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: mlflow-training-results-${{ github.run_number }}
-        path: |
-          MLProject/mlruns/
-          training_summary.txt
-        retention-days: 30
-        if-no-files-found: warn
+    defaults: # Set direktori kerja default untuk semua langkah di job ini
+      run:
+        working-directory: ./MLProject # Semua perintah run akan dieksekusi dari sini
 
-  # Job 3: Training summary and notification
-  summary:
-    runs-on: ubuntu-latest
-    name: Training Summary
-    needs: [validate, train]
-    if: always()
-    
     steps:
-    - name: Training Status Summary
-      run: |
-        echo "🎯 MLflow Project CI Summary"
-        echo "=========================="
-        echo "Validation Status: ${{ needs.validate.result }}"
-        echo "Training Status: ${{ needs.train.result }}"
-        
-        if [ "${{ needs.validate.result }}" = "success" ] && [ "${{ needs.train.result }}" = "success" ]; then
-          echo "✅ All jobs completed successfully!"
-          echo "🎉 Models trained and artifacts available for download"
-          echo "📁 Check GitHub Actions artifacts for MLflow runs and training results"
-          echo ""
-          echo "🚀 Next Steps:"
-          echo "1. Download artifacts from GitHub Actions"
-          echo "2. Extract MLflow runs for analysis"
-          echo "3. Compare model performance"
-          echo "4. Deploy best performing model"
-        else
-          echo "❌ Some jobs failed. Check the logs above."
-          echo "Debug info:"
-          echo "  - Validation: ${{ needs.validate.result }}"
-          echo "  - Training: ${{ needs.train.result }}"
-          exit 1
-        fi
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Sesuaikan dengan conda.yaml
+
+      - name: Set up Conda (Miniconda)
+        uses: conda-incubator/setup-miniconda@v3 # Action untuk setup Miniconda
+        with:
+          auto-update-conda: true
+          python-version: '3.11' # Sesuaikan
+          activate-environment: mlflow-insurance-env # Nama environment dari conda.yaml kita
+          environment-file: MLProject/conda.yaml # Path ke conda.yaml dari root repo
+          use-mamba: false # Set false untuk menggunakan conda
+
+      - name: Install MLflow
+        shell: bash -l {0} # Memastikan environment conda aktif
+        run: |
+          pip install mlflow==2.19.0
+
+      - name: Run MLflow Project
+        shell: bash -l {0} # Memastikan environment conda aktif
+        run: |
+          mlflow run . -P data_path="insurance_dataset_preprocessed.csv" -P experiment_name="CI_Run_From_GitHub"
+
+      - name: Archive mlruns folder
+        shell: bash -l {0}
+        run: |
+          # Pastikan kita berada di direktori yang benar untuk membuat arsip
+          # Karena working-directory default adalah ./MLProject, 
+          # mlruns akan ada di dalamnya.
+          if [ -d "mlruns" ]; then
+            tar -czvf mlruns_archive.tar.gz mlruns
+            echo "mlruns folder archived to mlruns_archive.tar.gz"
+          else
+            echo "mlruns folder not found after MLflow run."
+            # Anda bisa memilih untuk menggagalkan workflow di sini jika mlruns penting
+            # exit 1 
+          fi
+
+      - name: Upload mlruns as artifact
+        uses: actions/upload-artifact@v4
+        if: success() # Hanya jalankan jika langkah sebelumnya berhasil dan mlruns_archive.tar.gz ada
+        with:
+          name: mlruns-output-ci
+          path: ./MLProject/mlruns_archive.tar.gz # Path relatif terhadap root repository
