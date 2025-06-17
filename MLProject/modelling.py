@@ -6,6 +6,8 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.preprocessing import StandardScaler
 import mlflow
 import mlflow.sklearn
+import argparse
+import os
 
 def load_stroke_data(filepath):
     """Load stroke prediction dataset from CSV file."""
@@ -20,7 +22,6 @@ def load_stroke_data(filepath):
 
 def prepare_data_for_training(data, target='stroke'):
     """Prepare features and target for model training."""
-    # Separate features and target
     features = data.drop(columns=[target])
     target_values = data[target]
     
@@ -31,12 +32,10 @@ def prepare_data_for_training(data, target='stroke'):
 
 def create_train_test_splits(X, y):
     """Create train and test splits with proper scaling."""
-    # Split data
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    # Apply scaling
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
@@ -48,11 +47,9 @@ def create_train_test_splits(X, y):
 
 def evaluate_model_performance(model, X_test, y_test):
     """Calculate comprehensive model evaluation metrics."""
-    # Generate predictions
     predictions = model.predict(X_test)
     probabilities = model.predict_proba(X_test)[:, 1]
     
-    # Calculate metrics
     results = {
         'accuracy': accuracy_score(y_test, predictions),
         'precision': precision_score(y_test, predictions),
@@ -63,11 +60,15 @@ def evaluate_model_performance(model, X_test, y_test):
     
     return results, predictions, probabilities
 
-def execute_model_training(dataset):
+def execute_model_training(dataset, experiment_name="Default_Experiment"):
     """Execute complete model training pipeline with MLflow tracking."""
     if dataset is None:
         print("❌ No valid dataset provided")
         return None
+    
+    # Set MLflow experiment
+    mlflow.set_experiment(experiment_name)
+    print(f"🧪 MLflow experiment set to: {experiment_name}")
     
     # Prepare data
     X, y = prepare_data_for_training(dataset)
@@ -115,12 +116,30 @@ def execute_model_training(dataset):
         
         return run.info.run_id
 
-if __name__ == "__main__":
-    # Configuration
-    data_file_path = "dataset_preprocessing/train_data_processed.csv"
+def main():
+    """Main function to handle command line arguments and execute training."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Stroke Prediction Model Training')
+    parser.add_argument('--data_path', type=str, 
+                       default='dataset_preprocessing/train_data_processed.csv',
+                       help='Path to the training data CSV file')
+    parser.add_argument('--experiment_name', type=str,
+                       default='CI_Experiment_GitHubActions_Stroke',
+                       help='MLflow experiment name')
+    
+    args = parser.parse_args()
+    
+    print(f"🔧 Configuration:")
+    print(f"   📁 Data path: {args.data_path}")
+    print(f"   🧪 Experiment: {args.experiment_name}")
+    
+    # Check if data file exists
+    if not os.path.exists(args.data_path):
+        print(f"❌ Data file not found: {args.data_path}")
+        return
     
     # Load and validate dataset
-    stroke_dataset = load_stroke_data(data_file_path)
+    stroke_dataset = load_stroke_data(args.data_path)
     
     if stroke_dataset is not None:
         # Check data quality
@@ -136,7 +155,10 @@ if __name__ == "__main__":
         
         # Execute training if sufficient data
         if cleaned_rows > 100:
-            training_run_id = execute_model_training(stroke_dataset.copy())
+            training_run_id = execute_model_training(
+                stroke_dataset.copy(), 
+                args.experiment_name
+            )
             
             if training_run_id:
                 print(f"\n🎉 Training pipeline completed!")
@@ -148,3 +170,6 @@ if __name__ == "__main__":
             print("❌ Insufficient data after cleaning")
     else:
         print("❌ Unable to proceed - dataset loading failed")
+
+if __name__ == "__main__":
+    main()
