@@ -39,7 +39,7 @@ jobs:
       - name: Run MLflow Project
         shell: bash -l {0} # Memastikan environment conda aktif
         run: |
-          mlflow run . -P data_path="dataset_preprocessing/train_data_processed.csv" -P experiment_name="CI_Run_From_GitHub_Stroke"
+          mlflow run . --env-manager=local
 
       - name: Archive mlruns folder
         shell: bash -l {0}

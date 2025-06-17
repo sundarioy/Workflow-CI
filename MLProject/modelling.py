@@ -82,39 +82,42 @@ def execute_model_training(dataset, experiment_name="Default_Experiment"):
     )
     print("🔧 MLflow autologging activated")
     
-    # Execute training with MLflow tracking
-    with mlflow.start_run(run_name="StrokePredictor_LogisticRegression") as run:
-        print(f"🚀 MLflow run started: {run.info.run_id}")
-        
-        # Initialize optimized logistic regression model
-        stroke_classifier = LogisticRegression(
-            C=100,
-            solver='liblinear', 
-            penalty='l1',
-            random_state=42,
-            max_iter=1000
-        )
-        
-        print(f"🤖 Training classifier: {stroke_classifier.__class__.__name__}")
-        
-        # Train the model
-        stroke_classifier.fit(X_train, y_train)
-        
-        # Evaluate performance
-        metrics, preds, probs = evaluate_model_performance(stroke_classifier, X_test, y_test)
-        
-        # Display results
-        print(f"\n📊 Model Performance Summary:")
-        print(f"   🎯 Accuracy:  {metrics['accuracy']:.4f}")
-        print(f"   🎯 Precision: {metrics['precision']:.4f}")
-        print(f"   🎯 Recall:    {metrics['recall']:.4f}")
-        print(f"   🎯 F1-Score:  {metrics['f1']:.4f}")
-        print(f"   🎯 AUC-ROC:   {metrics['auc']:.4f}")
-        
-        print(f"\n✅ Training completed successfully!")
-        print(f"📝 MLflow run ID: {run.info.run_id}")
-        
-        return run.info.run_id
+    # KUNCI: MLProject sudah membuat run, jadi TIDAK perlu start_run() lagi
+    print("🚀 Using MLflow Project run (no nested run creation)")
+    
+    # Initialize optimized logistic regression model
+    stroke_classifier = LogisticRegression(
+        C=100,
+        solver='liblinear', 
+        penalty='l1',
+        random_state=42,
+        max_iter=1000
+    )
+    
+    print(f"🤖 Training classifier: {stroke_classifier.__class__.__name__}")
+    
+    # Train the model (autolog akan otomatis mencatat semua)
+    stroke_classifier.fit(X_train, y_train)
+    
+    # Evaluate performance
+    metrics, preds, probs = evaluate_model_performance(stroke_classifier, X_test, y_test)
+    
+    # Display results
+    print(f"\n📊 Model Performance Summary:")
+    print(f"   🎯 Accuracy:  {metrics['accuracy']:.4f}")
+    print(f"   🎯 Precision: {metrics['precision']:.4f}")
+    print(f"   🎯 Recall:    {metrics['recall']:.4f}")
+    print(f"   🎯 F1-Score:  {metrics['f1']:.4f}")
+    print(f"   🎯 AUC-ROC:   {metrics['auc']:.4f}")
+    
+    # Get current run ID (dari MLProject)
+    current_run = mlflow.active_run()
+    run_id = current_run.info.run_id if current_run else "No active run"
+    
+    print(f"\n✅ Training completed successfully!")
+    print(f"📝 MLflow run ID: {run_id}")
+    
+    return run_id
 
 def main():
     """Main function to handle command line arguments and execute training."""
